@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- Solana Web3.js Library -->
+    <script src="https://unpkg.com/@solana/web3.js@1.91.8/lib/index.iife.min.js"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
@@ -1360,17 +1362,49 @@
             }, 1000);
         }
         
-        // Phantom Wallet Connection
+        // Solana Wallet Connection
         function setupWalletConnection() {
             const connectButtons = [
                 document.getElementById('connect-wallet'),
                 document.getElementById('mobile-connect-wallet')
             ];
             
+            // Initialize Solana web3.js
+            window.solanaWeb3 = {
+                connection: null,
+                programId: null,
+                publicKey: null
+            };
+            
             // Check if Phantom wallet is installed
             window.isPhantomInstalled = function() {
                 return window.solana && window.solana.isPhantom;
             };
+            
+            // Initialize Solana connection
+            function initSolanaConnection() {
+                // Connect to Solana Devnet by default
+                const rpcEndpoint = 'https://api.devnet.solana.com';
+                window.solanaWeb3.connection = new solanaWeb3.Connection(rpcEndpoint, 'confirmed');
+                
+                // Set your program ID here (replace with actual program ID)
+                // This is just a placeholder, you need to replace it with your actual contract address
+                window.solanaWeb3.programId = new solanaWeb3.PublicKey('YOUR_SOLANA_PROGRAM_ID_HERE');
+            }
+            
+            // Get SOL balance of connected wallet
+            async function getWalletBalance() {
+                if (!window.connectedWallet || !window.solanaWeb3.connection) return 0;
+                
+                try {
+                    const publicKey = new solanaWeb3.PublicKey(window.connectedWallet);
+                    const balance = await window.solanaWeb3.connection.getBalance(publicKey);
+                    return balance / solanaWeb3.LAMPORTS_PER_SOL;
+                } catch (error) {
+                    console.error('Failed to get wallet balance:', error);
+                    return 0;
+                }
+            }
             
             connectButtons.forEach(btn => {
                 if (btn) {
@@ -1388,6 +1422,9 @@
                                 return;
                             }
                             
+                            // Initialize Solana connection
+                            initSolanaConnection();
+                            
                             // Request connection to Phantom wallet
                             const response = await window.solana.connect();
                             
@@ -1401,13 +1438,33 @@
                             
                             // Save wallet state
                             window.connectedWallet = publicKey;
+                            window.solanaWeb3.publicKey = response.publicKey;
+                            
+                            // Get and display wallet balance
+                            const balance = await getWalletBalance();
+                            showNotification(`Wallet balance: ${balance.toFixed(4)} SOL`, 'info');
                             
                             // Handle wallet disconnect event
                             window.solana.on('disconnect', () => {
                                 window.connectedWallet = null;
+                                window.solanaWeb3.publicKey = null;
                                 this.innerHTML = '<span class="lang-en">Connect Wallet</span><span class="lang-zh hidden">连接钱包</span>';
                                 this.classList.remove('font-mono');
                                 showNotification('Wallet disconnected', 'info');
+                            });
+                            
+                            // Handle account change event
+                            window.solana.on('accountChanged', async (accounts) => {
+                                if (accounts && accounts.length > 0) {
+                                    window.connectedWallet = accounts[0].toString();
+                                    window.solanaWeb3.publicKey = accounts[0];
+                                    const truncatedKey = window.connectedWallet.slice(0, 6) + '...' + window.connectedWallet.slice(-4);
+                                    this.innerHTML = truncatedKey;
+                                    
+                                    // Update balance
+                                    const balance = await getWalletBalance();
+                                    showNotification(`Wallet balance updated: ${balance.toFixed(4)} SOL`, 'info');
+                                }
                             });
                             
                             // Update trading and airdrop buttons to work with wallet
@@ -1434,14 +1491,9 @@
             // Update trading order button
             const placeOrderButton = document.getElementById('place-order');
             if (placeOrderButton) {
-                placeOrderButton.addEventListener('click', function() {
-                    if (window.connectedWallet) {
-                        // Here you would implement the actual trading logic using the connected wallet
-                        showNotification('Trade order request sent to wallet', 'info');
-                    } else {
-                        showNotification('Please connect your wallet first', 'error');
-                    }
-                });
+                // Remove any existing event listeners to prevent duplicates
+                placeOrderButton.removeEventListener('click', handlePlaceOrder);
+                placeOrderButton.addEventListener('click', handlePlaceOrder);
             }
             
             // Enable airdrop functionality
@@ -1462,6 +1514,172 @@
             if (window.connectedWallet) {
                 loadUserAirdropData();
             }
+        }
+        
+        // Handle place order functionality
+        async function handlePlaceOrder() {
+            if (!window.connectedWallet || !window.solanaWeb3.connection) {
+                showNotification('Please connect your wallet first', 'error');
+                return;
+            }
+            
+            try {
+                // Show loading state
+                this.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i><span class="lang-en">Processing...</span><span class="lang-zh hidden">处理中...</span>';
+                this.disabled = true;
+                
+                // Get order details from UI
+                const selectedCrypto = document.getElementById('crypto-select')?.value || 'sol';
+                const orderType = document.querySelector('.order-type-btn.active')?.dataset.type || 'up';
+                const amountInput = document.getElementById('order-amount');
+                const amount = parseFloat(amountInput?.value || 0);
+                
+                if (isNaN(amount) || amount <= 0) {
+                    showNotification('Please enter a valid amount', 'error');
+                    this.innerHTML = '<span class="lang-en">Place Order</span><span class="lang-zh hidden">下单</span>';
+                    this.disabled = false;
+                    return;
+                }
+                
+                // Get current price
+                const currentPrice = lastValidPrices[selectedCrypto]?.price || 0;
+                
+                // Create transaction data
+                const transactionData = {
+                    crypto: selectedCrypto,
+                    type: orderType,
+                    amount: amount,
+                    price: currentPrice,
+                    timestamp: new Date().getTime()
+                };
+                
+                // Show notification that transaction is being prepared
+                showNotification('Preparing transaction...', 'info');
+                
+                // Create and send Solana transaction
+                const signature = await createAndSendTransaction(transactionData);
+                
+                if (signature) {
+                    // Show success notification with transaction link
+                    const explorerUrl = `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+                    showNotification(`Transaction successful! <a href="${explorerUrl}" target="_blank">View on Explorer</a>`, 'success');
+                    
+                    // Clear amount input
+                    if (amountInput) {
+                        amountInput.value = '';
+                    }
+                    
+                    // Add the new position to the UI
+                    addNewPositionToUI(transactionData, signature);
+                } else {
+                    throw new Error('Transaction failed');
+                }
+                
+            } catch (error) {
+                console.error('Order placement failed:', error);
+                showNotification(error.message || 'Failed to place order', 'error');
+            } finally {
+                // Reset button state
+                this.innerHTML = '<span class="lang-en">Place Order</span><span class="lang-zh hidden">下单</span>';
+                this.disabled = false;
+            }
+        }
+        
+        // Create and send Solana transaction
+        async function createAndSendTransaction(transactionData) {
+            try {
+                // Get recent blockhash
+                const { blockhash } = await window.solanaWeb3.connection.getLatestBlockhash('finalized');
+                
+                // Create a new transaction
+                const transaction = new solanaWeb3.Transaction({
+                    recentBlockhash: blockhash,
+                    feePayer: window.solanaWeb3.publicKey
+                });
+                
+                // Create instruction data (this is just a placeholder)
+                // In a real application, you would create instructions specific to your program
+                const instructionData = Buffer.from(JSON.stringify(transactionData));
+                
+                // Create transaction instruction
+                const instruction = new solanaWeb3.TransactionInstruction({
+                    keys: [
+                        {
+                            pubkey: window.solanaWeb3.publicKey,
+                            isSigner: true,
+                            isWritable: true
+                        }
+                    ],
+                    programId: window.solanaWeb3.programId,
+                    data: instructionData
+                });
+                
+                // Add instruction to transaction
+                transaction.add(instruction);
+                
+                // Sign transaction with Phantom wallet
+                const signedTransaction = await window.solana.signAndSendTransaction(transaction);
+                
+                // Wait for transaction confirmation
+                const confirmation = await window.solanaWeb3.connection.confirmTransaction({
+                    signature: signedTransaction.signature,
+                    blockhash: blockhash,
+                    lastValidBlockHeight: signedTransaction.lastValidBlockHeight
+                }, 'confirmed');
+                
+                if (confirmation.value.err) {
+                    throw new Error('Transaction failed to confirm');
+                }
+                
+                return signedTransaction.signature;
+            } catch (error) {
+                console.error('Transaction creation failed:', error);
+                throw error;
+            }
+        }
+        
+        // Add new position to UI
+        function addNewPositionToUI(transactionData, signature) {
+            const positionsContainer = document.getElementById('open-positions');
+            if (!positionsContainer) return;
+            
+            const orderTypeText = transactionData.type === 'up' ? 'Up' : 'Down';
+            const orderTypeClass = transactionData.type === 'up' ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger';
+            const cryptoName = transactionData.crypto.toUpperCase();
+            
+            // Create new position element
+            const positionElement = document.createElement('div');
+            positionElement.className = 'p-4 border border-gray-800 rounded-lg mb-3 transition-all duration-300 hover:border-primary/50';
+            positionElement.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-medium">${cryptoName}</span>
+                        <span class="text-xs ${orderTypeClass} px-2 py-0.5 rounded-full">${orderTypeText}</span>
+                    </div>
+                    <div class="text-xs text-gray-400">
+                        <a href="https://explorer.solana.com/tx/${signature}?cluster=devnet" target="_blank" class="hover:text-primary transition-colors">
+                            <i class="fa fa-external-link mr-1"></i>${signature.slice(0, 8)}...
+                        </a>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="text-sm">
+                            <span class="text-gray-400">${transactionData.amount} SOL</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">
+                            Entry Price: $${transactionData.price.toFixed(2)}
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">
+                            <span class="lang-en">Est. Profit</span><span class="lang-zh hidden">预计收益</span>: $0.00
+                        </div>
+                    </div>
+                    <div class="text-sm text-success">+0.00%</div>
+                </div>
+            `;
+            
+            // Add to container
+            positionsContainer.appendChild(positionElement);
         }
         
         // User airdrop data management
@@ -1563,40 +1781,216 @@
         
         // Start airdrop participation
         async function startAirdrop() {
-            if (!window.connectedWallet) {
+            if (!window.connectedWallet || !window.solanaWeb3.connection) {
                 showNotification('Please connect your wallet first', 'error');
                 return;
             }
             
             try {
-                // Request airdrop authorization from the user
-                // In a real app, this would involve a wallet transaction
-                // For now, we'll simulate the authorization
-                const hasAuthorized = await simulateWalletAuthorization();
-                
-                if (!hasAuthorized) {
-                    throw new Error('Airdrop authorization denied');
+                // Show loading state
+                const startBtn = document.getElementById('start-mining-btn');
+                if (startBtn) {
+                    startBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i><span class="lang-en">Joining...</span><span class="lang-zh hidden">加入中...</span>';
+                    startBtn.disabled = true;
                 }
                 
-                // Start airdrop participation
-                airdropData.isParticipating = true;
-                airdropData.startTime = new Date().getTime();
-                airdropData.lastRewardTime = airdropData.startTime;
+                // Show notification that airdrop is being prepared
+                showNotification('Preparing airdrop participation...', 'info');
                 
-                // Show notification
-                showNotification('Airdrop participation started successfully', 'success');
+                // Request airdrop authorization from the user via wallet transaction
+                const participationSignature = await createAirdropParticipationTransaction();
                 
-                // Start airdrop interval (update every 1 second)
-                airdropData.airdropInterval = setInterval(calculateAirdropProgress, 1000);
-                
-                // Update UI
-                updateAirdropUI();
-                
-                // Save airdrop state
-                saveAirdropData();
+                if (participationSignature) {
+                    // Show success notification with transaction link
+                    const explorerUrl = `https://explorer.solana.com/tx/${participationSignature}?cluster=devnet`;
+                    showNotification(`Airdrop participation started successfully! <a href="${explorerUrl}" target="_blank">View on Explorer</a>`, 'success');
+                    
+                    // Start airdrop participation
+                    airdropData.isParticipating = true;
+                    airdropData.startTime = new Date().getTime();
+                    airdropData.lastRewardTime = airdropData.startTime;
+                    
+                    // Start airdrop interval (update every 1 second)
+                    airdropData.airdropInterval = setInterval(calculateAirdropProgress, 1000);
+                    
+                    // Update UI
+                    updateAirdropUI();
+                    
+                    // Save airdrop state
+                    saveAirdropData();
+                } else {
+                    throw new Error('Failed to create participation transaction');
+                }
                 
             } catch (error) {
+                console.error('Airdrop participation failed:', error);
                 showNotification(error.message || 'Failed to start airdrop participation', 'error');
+            } finally {
+                // Reset button state
+                const startBtn = document.getElementById('start-mining-btn');
+                if (startBtn) {
+                    startBtn.disabled = !window.connectedWallet;
+                    if (!airdropData.isParticipating) {
+                        startBtn.innerHTML = '<i class="fa fa-rocket mr-1"></i><span class="lang-en">Start Airdrop</span><span class="lang-zh hidden">开始空投</span>';
+                    }
+                }
+            }
+        }
+        
+        // Create airdrop participation transaction
+        async function createAirdropParticipationTransaction() {
+            try {
+                // Get recent blockhash
+                const { blockhash } = await window.solanaWeb3.connection.getLatestBlockhash('finalized');
+                
+                // Create a new transaction
+                const transaction = new solanaWeb3.Transaction({
+                    recentBlockhash: blockhash,
+                    feePayer: window.solanaWeb3.publicKey
+                });
+                
+                // Create airdrop participation instruction
+                const participationData = Buffer.from('airdrop_participate');
+                
+                const instruction = new solanaWeb3.TransactionInstruction({
+                    keys: [
+                        {
+                            pubkey: window.solanaWeb3.publicKey,
+                            isSigner: true,
+                            isWritable: true
+                        }
+                    ],
+                    programId: window.solanaWeb3.programId,
+                    data: participationData
+                });
+                
+                // Add instruction to transaction
+                transaction.add(instruction);
+                
+                // Sign transaction with Phantom wallet
+                const signedTransaction = await window.solana.signAndSendTransaction(transaction);
+                
+                // Wait for transaction confirmation
+                const confirmation = await window.solanaWeb3.connection.confirmTransaction({
+                    signature: signedTransaction.signature,
+                    blockhash: blockhash,
+                    lastValidBlockHeight: signedTransaction.lastValidBlockHeight
+                }, 'confirmed');
+                
+                if (confirmation.value.err) {
+                    throw new Error('Airdrop participation transaction failed to confirm');
+                }
+                
+                return signedTransaction.signature;
+            } catch (error) {
+                console.error('Airdrop participation transaction failed:', error);
+                throw error;
+            }
+        }
+        
+        // Claim airdrop rewards
+        async function claimRewards() {
+            if (!window.connectedWallet || !window.solanaWeb3.connection) {
+                showNotification('Please connect your wallet first', 'error');
+                return;
+            }
+            
+            if (airdropData.totalEarned <= 0) {
+                showNotification('You have no rewards to claim', 'info');
+                return;
+            }
+            
+            try {
+                // Show loading state
+                const claimBtn = document.getElementById('claim-btn');
+                if (claimBtn) {
+                    claimBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i><span class="lang-en">Claiming...</span><span class="lang-zh hidden">领取中...</span>';
+                    claimBtn.disabled = true;
+                }
+                
+                // Show notification that claim is being processed
+                showNotification('Processing reward claim...', 'info');
+                
+                // Create and send claim transaction
+                const claimSignature = await createClaimRewardsTransaction();
+                
+                if (claimSignature) {
+                    // Show success notification with transaction link
+                    const explorerUrl = `https://explorer.solana.com/tx/${claimSignature}?cluster=devnet`;
+                    showNotification(`Rewards claimed successfully! <a href="${explorerUrl}" target="_blank">View on Explorer</a>`, 'success');
+                    
+                    // Reset earned amount
+                    airdropData.totalEarned = 0;
+                    airdropData.currentSessionEarnings = 0;
+                    
+                    // Update UI
+                    updateAirdropUI();
+                    
+                    // Save airdrop state
+                    saveAirdropData();
+                }
+                
+            } catch (error) {
+                console.error('Reward claim failed:', error);
+                showNotification(error.message || 'Failed to claim rewards', 'error');
+            } finally {
+                // Reset button state
+                const claimBtn = document.getElementById('claim-btn');
+                if (claimBtn) {
+                    claimBtn.disabled = !window.connectedWallet || airdropData.totalEarned <= 0;
+                    claimBtn.innerHTML = '<i class="fa fa-gift mr-1"></i><span class="lang-en">Claim Rewards</span><span class="lang-zh hidden">领取奖励</span>';
+                }
+            }
+        }
+        
+        // Create claim rewards transaction
+        async function createClaimRewardsTransaction() {
+            try {
+                // Get recent blockhash
+                const { blockhash } = await window.solanaWeb3.connection.getLatestBlockhash('finalized');
+                
+                // Create a new transaction
+                const transaction = new solanaWeb3.Transaction({
+                    recentBlockhash: blockhash,
+                    feePayer: window.solanaWeb3.publicKey
+                });
+                
+                // Create claim rewards instruction data
+                const claimData = Buffer.from(`claim_${airdropData.totalEarned}`);
+                
+                const instruction = new solanaWeb3.TransactionInstruction({
+                    keys: [
+                        {
+                            pubkey: window.solanaWeb3.publicKey,
+                            isSigner: true,
+                            isWritable: true
+                        }
+                    ],
+                    programId: window.solanaWeb3.programId,
+                    data: claimData
+                });
+                
+                // Add instruction to transaction
+                transaction.add(instruction);
+                
+                // Sign transaction with Phantom wallet
+                const signedTransaction = await window.solana.signAndSendTransaction(transaction);
+                
+                // Wait for transaction confirmation
+                const confirmation = await window.solanaWeb3.connection.confirmTransaction({
+                    signature: signedTransaction.signature,
+                    blockhash: blockhash,
+                    lastValidBlockHeight: signedTransaction.lastValidBlockHeight
+                }, 'confirmed');
+                
+                if (confirmation.value.err) {
+                    throw new Error('Claim rewards transaction failed to confirm');
+                }
+                
+                return signedTransaction.signature;
+            } catch (error) {
+                console.error('Claim rewards transaction failed:', error);
+                throw error;
             }
         }
         
