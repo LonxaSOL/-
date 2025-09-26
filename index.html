@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Event Contract Trading Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#00FFA3', // Solana风格的绿色
+                        secondary: '#0F172A',
+                        dark: '#020617',
+                        light: '#F8FAFC',
+                        accent: '#7C3AED',
+                        danger: '#EF4444',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        token: '#34A0A4', // SOLEC代币颜色 - 改用青色系
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .glass-effect {
+                backdrop-filter: blur(10px);
+                background-color: rgba(15, 23, 42, 0.7);
+            }
+            .gradient-border {
+                position: relative;
+                border: double 1px transparent;
+                background-image: linear-gradient(#020617, #020617), 
+                                  linear-gradient(to right, #00FFA3, #7C3AED);
+                background-origin: border-box;
+                background-clip: padding-box, border-box;
+            }
+            .token-gradient {
+                background: linear-gradient(90deg, #34A0A4, #7C3AED);
+                -webkit-background-clip: text;
+                background-clip: text;
+                color: transparent;
+            }
+            .animate-pulse-slow {
+                animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .countdown {
+                animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .order-book-item {
+                transition: all 0.3s ease;
+            }
+            .order-book-item:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+            .matching-indicator {
+                animation: blink 1.5s ease-in-out infinite;
+            }
+            .staking-glow {
+                box-shadow: 0 0 15px rgba(52, 160, 164, 0.3);
+            }
+            .staking-highlight {
+                border-color: rgba(52, 160, 164, 0.5);
+            }
+            .referral-badge {
+                position: relative;
+                overflow: hidden;
+            }
+            .referral-badge::after {
+                content: 'NEW';
+                position: absolute;
+                top: -5px;
+                right: -15px;
+                background-color: #7C3AED;
+                color: white;
+                font-size: 8px;
+                padding: 2px 15px;
+                transform: rotate(45deg);
+            }
+            @keyframes blink {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+        }
+    </style>
+</head>
+
+<body class="font-inter bg-dark text-light min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <header class="sticky top-0 z-50 glass-effect border-b border-gray-800">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <div class="flex items-center space-x-2">
+                    <div class="h-10 w-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                        <i class="fa fa-link text-dark text-xl font-bold"></i>
+                    </div>
+                    <h1 class="text-xl md:text-2xl font-bold tracking-tight">
+                        <span class="text-primary">Solana</span><span class="lang-en">Trade</span><span class="lang-zh hidden">交易</span>
+                    </h1>
+                </div>
+                
+                <!-- Desktop Navigation -->
+                <nav class="hidden md:flex items-center space-x-6 lg:space-x-8">
+                    <a href="#markets" class="text-gray-300 hover:text-primary transition-colors whitespace-nowrap">
+                        <span class="lang-en">Markets</span>
+                        <span class="lang-zh hidden">市场</span>
+                    </a>
+                    <a href="#trading" class="text-gray-300 hover:text-primary transition-colors whitespace-nowrap">
+                        <span class="lang-en">Event Contracts</span>
+                        <span class="lang-zh hidden">事件合约</span>
+                    </a>
+                    <a href="#staking" class="text-gray-300 hover:text-token transition-colors whitespace-nowrap">
+                        <span class="lang-en">Stake & Earn</span>
+                        <span class="lang-zh hidden">质押挖矿</span>
+                    </a>
+                    <a href="#referral" class="text-gray-300 hover:text-primary transition-colors whitespace-nowrap">
+                        <span class="lang-en">Refer & Earn</span>
+                        <span class="lang-zh hidden">推荐返佣</span>
+                    </a>
+                </nav>
+                
+                <!-- Right Actions -->
+                <div class="flex items-center space-x-3 sm:space-x-4">
+                    <!-- 移除SLT报价按钮 -->
+                    <button id="language-toggle" class="px-3 py-1.5 rounded-lg bg-secondary border border-gray-700 hover:border-primary transition-colors text-sm whitespace-nowrap">
+                        <span class="lang-en">中文</span>
+                        <span class="lang-zh hidden">English</span>
+                    </button>
+                    <button class="hidden md:block px-4 py-2 rounded-lg bg-secondary border border-gray-700 hover:border-primary transition-colors whitespace-nowrap" id="connect-wallet">
+                        <span class="lang-en">Connect Wallet</span>
+                        <span class="lang-zh hidden">连接钱包</span>
+                    </button>
+                    <button class="md:hidden text-2xl" id="mobile-menu-button">
+                        <i class="fa fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Mobile Navigation Menu -->
+            <div class="md:hidden hidden mt-3 py-3 border-t border-gray-800" id="mobile-menu">
+                <!-- 移除移动端SLT报价 -->
+                <nav class="flex flex-col space-y-3">
+                    <a href="#markets" class="text-gray-300 hover:text-primary transition-colors py-1">
+                        <span class="lang-en">Markets</span>
+                        <span class="lang-zh hidden">市场</span>
+                    </a>
+                    <a href="#trading" class="text-gray-300 hover:text-primary transition-colors py-1">
+                        <span class="lang-en">Event Contracts</span>
+                        <span class="lang-zh hidden">事件合约</span>
+                    </a>
+                    <a href="#staking" class="text-gray-300 hover:text-token transition-colors py-1">
+                        <span class="lang-en">Stake & Earn</span>
+                        <span class="lang-zh hidden">质押挖矿</span>
+                    </a>
+                    <a href="#referral" class="text-gray-300 hover:text-primary transition-colors py-1">
+                        <span class="lang-en">Refer & Earn</span>
+                        <span class="lang-zh hidden">推荐返佣</span>
+                    </a>
+                    <a href="#" class="text-gray-300 hover:text-primary transition-colors py-1" id="mobile-connect-wallet">
+                        <span class="lang-en">Connect Wallet</span>
+                        <span class="lang-zh hidden">连接钱包</span>
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-6">
+        <!-- Market Overview Section -->
+        <section id="markets" class="mb-10">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">
+                    <span class="lang-en">Market Overview</span>
+                    <span class="lang-zh hidden">市场概览</span>
+                </h2>
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-400">
+                        <span class="lang-en">Last updated:</span>
+                        <span class="lang-zh hidden">最后更新:</span>
+                    </span>
+                    <span class="text-sm text-primary" id="last-updated">Loading...</span>
+                </div>
+            </div>
+            
+            <!-- Crypto Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                <!-- BTC Card -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:shadow-lg hover:shadow-primary/10 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 rounded-full bg-orange-500/20 flex items-center justify-center mr-3">
+                                <i class="fa fa-btc text-orange-500"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold">Bitcoin</h3>
+                                <p class="text-sm text-gray-400">BTC</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 bg-success/20 text-success text-xs rounded-full">+2.4%</span>
+                    </div>
+                    <div class="mb-2">
+                        <p class="text-2xl font-bold" id="btc-price">$42,568.32</p>
+                    </div>
+                    <div class="h-12">
+                        <canvas class="crypto-chart" data-crypto="btc"></canvas>
+                    </div>
+                </div>
+                
+                <!-- ETH Card -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:shadow-lg hover:shadow-primary/10 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 rounded-full bg-slate-400/20 flex items-center justify-center mr-3">
+                                <i class="fa fa-ethereum text-slate-400"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold">Ethereum</h3>
+                                <p class="text-sm text-gray-400">ETH</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 bg-danger/20 text-danger text-xs rounded-full">-1.2%</span>
+                    </div>
+                    <div class="mb-2">
+                        <p class="text-2xl font-bold" id="eth-price">$2,345.67</p>
+                    </div>
+                    <div class="h-12">
+                        <canvas class="crypto-chart" data-crypto="eth"></canvas>
+                    </div>
+                </div>
+                
+                <!-- BNB Card -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:shadow-lg hover:shadow-primary/10 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 rounded-full bg-yellow-500/20 flex items-center justify-center mr-3">
+                                <i class="fa fa-btc text-yellow-500"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold">Binance Coin</h3>
+                                <p class="text-sm text-gray-400">BNB</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 bg-success/20 text-success text-xs rounded-full">+0.8%</span>
+                    </div>
+                    <div class="mb-2">
+                        <p class="text-2xl font-bold" id="bnb-price">$356.78</p>
+                    </div>
+                    <div class="h-12">
+                        <canvas class="crypto-chart" data-crypto="bnb"></canvas>
+                    </div>
+                </div>
+                
+                <!-- SOL Card -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:shadow-lg hover:shadow-primary/10 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center mr-3">
+                                <i class="fa fa-sun-o text-primary"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold">Solana</h3>
+                                <p class="text-sm text-gray-400">SOL</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 bg-success/20 text-success text-xs rounded-full">+5.3%</span>
+                    </div>
+                    <div class="mb-2">
+                        <p class="text-2xl font-bold" id="sol-price">$123.45</p>
+                    </div>
+                    <div class="h-12">
+                        <canvas class="crypto-chart" data-crypto="sol"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 替换为ADA行情 -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:shadow-lg hover:shadow-token/20 transition-all border-token/30">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 rounded-full bg-token/20 flex items-center justify-center mr-3">
+                                <i class="fa fa-credit-card text-token"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold">Cardano</h3>
+                                <p class="text-sm text-gray-400">ADA</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-1 bg-token/20 text-token text-xs rounded-full">+2.1%</span>
+                    </div>
+                    <div class="mb-2">
+                        <p class="text-2xl font-bold token-gradient" id="ada-price">$0.5432</p>
+                    </div>
+                    <div class="h-12">
+                        <canvas class="crypto-chart" data-crypto="ada"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Trading Section -->
+        <section id="trading" class="mb-10">
+            <h2 class="text-2xl font-bold mb-6">
+                <span class="lang-en">Event Contract Trading</span>
+                <span class="lang-zh hidden">事件合约交易</span>
+            </h2>
+            
+            <!-- Contract Explanation -->
+            <div class="bg-secondary/50 rounded-lg p-4 mb-6 border border-primary/20">
+                <div class="flex items-start">
+                    <i class="fa fa-info-circle text-primary text-xl mr-3 mt-1"></i>
+                    <div>
+                        <h4 class="font-medium text-primary mb-1">
+                            <span class="lang-en">How Order Matching Works</span>
+                            <span class="lang-zh hidden">订单匹配机制</span>
+                        </h4>
+                        <p class="text-sm text-gray-300">
+                            <span class="lang-en">Orders are matched by timestamp (second precision) and amount. Same-second orders take priority, with exact amount matching first. One order can match multiple counterparties. 5% entry fee is deducted immediately upon successful matching, and 5% exit fee upon contract expiration. All profits and losses are calculated after fee deductions.</span>
+                            <span class="lang-zh hidden">订单按时间戳（精确到秒）和金额匹配。同一秒的订单优先，优先匹配金额完全对等的订单。一个订单可以与多个对手方匹配。匹配成功后立即扣除5%入场手续费，合约到期时扣除5%出场手续费。所有盈亏均在扣除手续费后计算。</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <!-- Chart Panel with Current Contract Countdown -->
+                <div class="lg:col-span-2 bg-secondary rounded-xl p-5 gradient-border">
+                    <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                        <div class="flex items-center space-x-2">
+                            <select id="crypto-select" class="bg-dark border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary">
+                                <option value="btc">BTC/USDT</option>
+                                <option value="eth">ETH/USDT</option>
+                                <option value="bnb">BNB/USDT</option>
+                                <option value="sol" selected>SOL/USDT</option>
+                                <option value="ada">ADA/USDT</option>
+                            </select>
+                            <span class="text-lg font-semibold" id="chart-price">$123.45</span>
+                            <span class="text-success text-sm">+$6.54 (5.3%)</span>
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-1">
+                            <button class="timeframe-btn px-2 py-1 text-xs rounded bg-dark hover:bg-primary/10 transition-colors active">5m</button>
+                            <button class="timeframe-btn px-2 py-1 text-xs rounded bg-dark hover:bg-primary/10 transition-colors">15m</button>
+                            <button class="timeframe-btn px-2 py-1 text-xs rounded bg-dark hover:bg-primary/10 transition-colors">30m</button>
+                            <button class="timeframe-btn px-2 py-1 text-xs rounded bg-dark hover:bg-primary/10 transition-colors">1h</button>
+                            <button class="timeframe-btn px-2 py-1 text-xs rounded bg-dark hover:bg-primary/10 transition-colors">4h</button>
+                            <button class="timeframe-btn px-2 py-1 text-xs rounded bg-dark hover:bg-primary/10 transition-colors">1d</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Chart Container -->
+                    <div class="h-[300px] mb-4">
+                        <canvas id="trading-chart"></canvas>
+                    </div>
+                    
+                    <!-- Current Contract Countdown -->
+                    <div class="flex justify-between items-center p-3 bg-dark/50 rounded-lg border border-gray-700">
+                        <div>
+                            <p class="text-sm text-gray-400">
+                                <span class="lang-en">Current Contract Expires In</span>
+                                <span class="lang-zh hidden">当前合约剩余时间</span>
+                            </p>
+                            <div class="flex items-center mt-1">
+                                <span class="countdown text-primary font-medium" id="countdown-timer">05:00</span>
+                                <span class="text-xs text-gray-400 ml-2">
+                                    <span class="lang-en">until price snapshot</span>
+                                    <span class="lang-zh hidden">后价格快照</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm text-gray-400">
+                                <span class="lang-en">Contract ID</span>
+                                <span class="lang-zh hidden">合约ID</span>
+                            </p>
+                            <p class="text-xs font-mono bg-dark px-2 py-1 rounded mt-1">SOL-20230615-1430</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trading Form Panel -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Order Form -->
+                    <div class="bg-secondary rounded-xl p-5 gradient-border">
+                        <div class="flex border-b border-gray-700 mb-4">
+                            <button class="order-type-btn px-4 py-2 text-primary border-b-2 border-primary font-medium" data-type="up">
+                                <span class="lang-en">Up</span>
+                                <span class="lang-zh hidden">上涨</span>
+                            </button>
+                            <button class="order-type-btn px-4 py-2 text-gray-400 hover:text-primary transition-colors" data-type="down">
+                                <span class="lang-en">Down</span>
+                                <span class="lang-zh hidden">下跌</span>
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">
+                                    <span class="lang-en">Amount (USDT)</span>
+                                    <span class="lang-zh hidden">金额 (USDT)</span>
+                                </label>
+                                <div class="relative">
+                                    <input type="number" min="10" step="10" value="100" 
+                                        class="w-full bg-dark border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-primary">
+                                    <div class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">$</div>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-4 gap-2">
+                                <button class="amount-btn px-2 py-1.5 bg-dark hover:bg-primary/10 rounded text-sm transition-colors">25%</button>
+                                <button class="amount-btn px-2 py-1.5 bg-dark hover:bg-primary/10 rounded text-sm transition-colors">50%</button>
+                                <button class="amount-btn px-2 py-1.5 bg-dark hover:bg-primary/10 rounded text-sm transition-colors">75%</button>
+                                <button class="amount-btn px-2 py-1.5 bg-dark hover:bg-primary/10 rounded text-sm transition-colors">100%</button>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">
+                                        <span class="lang-en">Balance</span>
+                                        <span class="lang-zh hidden">余额</span>
+                                    </label>
+                                    <p class="text-sm bg-dark/50 px-3 py-2 rounded-lg">12,540.89 USDT</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">
+                                        <span class="lang-en">Est. Fee (5%)</span>
+                                        <span class="lang-zh hidden">预计手续费 (5%)</span>
+                                    </label>
+                                    <p class="text-sm bg-dark/50 px-3 py-2 rounded-lg text-token">5.00 USDT</p>
+                                </div>
+                            </div>
+                            
+                            <button id="place-order" class="w-full py-3 bg-primary text-dark font-medium rounded-lg hover:bg-primary/90 transition-colors">
+                                <span class="lang-en">Place Up Order</span>
+                                <span class="lang-zh hidden">提交上涨订单</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Open Orders -->
+                    <div class="bg-secondary rounded-xl p-5 gradient-border">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-semibold">
+                                <span class="lang-en">Open Positions</span>
+                                <span class="lang-zh hidden">当前持仓</span>
+                            </h3>
+                            <span class="text-xs bg-primary/20 text-primary px-2 py-1 rounded-full">2</span>
+                        </div>
+                        
+                        <div class="space-y-3 max-h-[200px] overflow-y-auto pr-2">
+                            <!-- Open Order 1 -->
+                            <div class="bg-dark/50 rounded-lg p-3 border border-gray-700">
+                                <div class="flex justify-between mb-2">
+                                    <div>
+                                        <span class="text-xs text-gray-400">SOL/USDT • </span>
+                                        <span class="text-xs bg-success/20 text-success px-1.5 py-0.5 rounded">
+                                            <span class="lang-en">Up</span>
+                                            <span class="lang-zh hidden">上涨</span>
+                                        </span>
+                                    </div>
+                                    <span class="text-xs text-gray-400">
+                                        <span class="lang-en">Expires in</span>
+                                        <span class="lang-zh hidden">剩余时间</span>: 03:45
+                                    </span>
+                                </div>
+                                
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <p class="text-sm"><span class="text-gray-400">100 USDT</span></p>
+                                        <p class="text-xs text-gray-400 mt-1">
+                                            <span class="lang-en">Entry Price</span>
+                                            <span class="lang-zh hidden">入场价</span>: $123.45
+                                        </p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-sm text-success">+2.3%</p>
+                                        <p class="text-xs text-gray-400 mt-1">
+                                            <span class="lang-en">Est. Profit</span>
+                                            <span class="lang-zh hidden">预计收益</span>: $2.20
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Open Order 2 -->
+                            <div class="bg-dark/50 rounded-lg p-3 border border-gray-700">
+                                <div class="flex justify-between mb-2">
+                                    <div>
+                                        <span class="text-xs text-gray-400">BTC/USDT • </span>
+                                        <span class="text-xs bg-danger/20 text-danger px-1.5 py-0.5 rounded">
+                                            <span class="lang-en">Down</span>
+                                            <span class="lang-zh hidden">下跌</span>
+                                        </span>
+                                    </div>
+                                    <span class="text-xs text-gray-400">
+                                        <span class="lang-en">Expires in</span>
+                                        <span class="lang-zh hidden">剩余时间</span>: 01:20
+                                    </span>
+                                </div>
+                                
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <p class="text-sm"><span class="text-gray-400">200 USDT</span></p>
+                                        <p class="text-xs text-gray-400 mt-1">
+                                            <span class="lang-en">Entry Price</span>
+                                            <span class="lang-zh hidden">入场价</span>: $42,568.32
+                                        </p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-sm text-danger">-0.8%</p>
+                                        <p class="text-xs text-gray-400 mt-1">
+                                            <span class="lang-en">Est. Loss</span>
+                                            <span class="lang-zh hidden">预计亏损</span>: $1.58
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Staking Section -->
+        <section id="staking" class="mb-10">
+            <h2 class="text-2xl font-bold mb-6">
+                <span class="lang-en">Stake & Earn Rewards</span>
+                <span class="lang-zh hidden">质押挖矿</span>
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Staking Option 1 - Flexible -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:staking-glow transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="font-semibold text-lg">Flexible Staking</h3>
+                            <p class="text-sm text-gray-400 mt-1">
+                                <span class="lang-en">No lock-up period</span>
+                                <span class="lang-zh hidden">无锁仓期限</span>
+                            </p>
+                        </div>
+                        <div class="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                            <i class="fa fa-usd text-primary"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-3xl font-bold text-primary">3.65% APY</p>
+                        <p class="text-sm text-gray-400">
+                            <span class="lang-en">Based on daily 1 SOLEC reward</span>
+                            <span class="lang-zh hidden">基于每日1 SOLEC奖励计算</span>
+                        </p>
+                    </div>
+                    
+                    <div class="space-y-3 mb-5">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Staking Amount</span>
+                                <span class="lang-zh hidden">质押金额</span>
+                            </span>
+                            <span class="font-medium">100 USDT</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Daily Reward</span>
+                                <span class="lang-zh hidden">每日奖励</span>
+                            </span>
+                            <span class="text-token font-medium">1 SOLEC</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Lock-up Period</span>
+                                <span class="lang-zh hidden">锁仓期限</span>
+                            </span>
+                            <span>
+                                <span class="lang-en">Flexible</span>
+                                <span class="lang-zh hidden">灵活支取</span>
+                            </span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Auto-Transfer</span>
+                                <span class="lang-zh hidden">自动转换</span>
+                            </span>
+                            <span>
+                                <span class="lang-en">Not applicable</span>
+                                <span class="lang-zh hidden">不适用</span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <button class="w-full py-3 bg-primary text-dark font-medium rounded-lg hover:bg-primary/90 transition-colors">
+                        <span class="lang-en">Stake 100 USDT</span>
+                        <span class="lang-zh hidden">质押100 USDT</span>
+                    </button>
+                </div>
+                
+                <!-- Staking Option 2 - 3 Days -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:staking-glow transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="font-semibold text-lg">3-Day Staking</h3>
+                            <p class="text-sm text-gray-400 mt-1">
+                                <span class="lang-en">Fixed 3-day term</span>
+                                <span class="lang-zh hidden">固定3天期限</span>
+                            </p>
+                        </div>
+                        <div class="h-10 w-10 rounded-full bg-warning/20 flex items-center justify-center">
+                            <i class="fa fa-calendar text-warning"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-3xl font-bold text-warning">36.5% APY</p>
+                        <p class="text-sm text-gray-400">
+                            <span class="lang-en">Based on daily 10 SOLEC reward</span>
+                            <span class="lang-zh hidden">基于每日10 SOLEC奖励计算</span>
+                        </p>
+                    </div>
+                    
+                    <div class="space-y-3 mb-5">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Staking Amount</span>
+                                <span class="lang-zh hidden">质押金额</span>
+                            </span>
+                            <span class="font-medium">100 USDT</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Daily Reward</span>
+                                <span class="lang-zh hidden">每日奖励</span>
+                            </span>
+                            <span class="text-token font-medium">10 SOLEC</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Lock-up Period</span>
+                                <span class="lang-zh hidden">锁仓期限</span>
+                            </span>
+                            <span>
+                                <span class="lang-en">3 days</span>
+                                <span class="lang-zh hidden">3天</span>
+                            </span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Auto-Transfer</span>
+                                <span class="lang-zh hidden">自动转换</span>
+                            </span>
+                            <span>
+                                <span class="lang-en">To Flexible</span>
+                                <span class="lang-zh hidden">转为活期</span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <button class="w-full py-3 bg-warning text-dark font-medium rounded-lg hover:bg-warning/90 transition-colors">
+                        <span class="lang-en">Stake 100 USDT</span>
+                        <span class="lang-zh hidden">质押100 USDT</span>
+                    </button>
+                </div>
+                
+                <!-- Staking Option 3 - 7 Days -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border hover:staking-glow transition-all staking-highlight">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="font-semibold text-lg">7-Day Staking</h3>
+                            <p class="text-sm text-gray-400 mt-1">
+                                <span class="lang-en">Fixed 7-day term</span>
+                                <span class="lang-zh hidden">固定7天期限</span>
+                            </p>
+                        </div>
+                        <div class="h-10 w-10 rounded-full bg-token/20 flex items-center justify-center">
+                            <i class="fa fa-calendar-check-o text-token"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-3xl font-bold token-gradient">365% APY</p>
+                        <p class="text-sm text-gray-400">
+                            <span class="lang-en">Based on daily 100 SOLEC reward</span>
+                            <span class="lang-zh hidden">基于每日100 SOLEC奖励计算</span>
+                        </p>
+                    </div>
+                    
+                    <div class="space-y-3 mb-5">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Staking Amount</span>
+                                <span class="lang-zh hidden">质押金额</span>
+                            </span>
+                            <span class="font-medium">100 USDT</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Daily Reward</span>
+                                <span class="lang-zh hidden">每日奖励</span>
+                            </span>
+                            <span class="text-token font-medium">100 SOLEC</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Lock-up Period</span>
+                                <span class="lang-zh hidden">锁仓期限</span>
+                            </span>
+                            <span>
+                                <span class="lang-en">7 days</span>
+                                <span class="lang-zh hidden">7天</span>
+                            </span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">
+                                <span class="lang-en">Auto-Transfer</span>
+                                <span class="lang-zh hidden">自动转换</span>
+                            </span>
+                            <span>
+                                <span class="lang-en">To Flexible</span>
+                                <span class="lang-zh hidden">转为活期</span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <button class="w-full py-3 bg-token text-light font-medium rounded-lg hover:bg-token/90 transition-colors">
+                        <span class="lang-en">Stake 100 USDT</span>
+                        <span class="lang-zh hidden">质押100 USDT</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Active Stakes -->
+            <div class="mt-6 bg-secondary rounded-xl p-5 gradient-border">
+                <h3 class="font-semibold text-lg mb-4">
+                    <span class="lang-en">Your Active Stakes</span>
+                    <span class="lang-zh hidden">当前质押</span>
+                </h3>
+                
+                <div class="space-y-4 overflow-x-auto">
+                    <table class="w-full min-w-[600px]">
+                        <thead>
+                            <tr class="border-b border-gray-700">
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Type</span>
+                                    <span class="lang-zh hidden">类型</span>
+                                </th>
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Amount</span>
+                                    <span class="lang-zh hidden">金额</span>
+                                </th>
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Started</span>
+                                    <span class="lang-zh hidden">开始时间</span>
+                                </th>
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Ends In</span>
+                                    <span class="lang-zh hidden">剩余时间</span>
+                                </th>
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Rewards</span>
+                                    <span class="lang-zh hidden">奖励</span>
+                                </th>
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Status</span>
+                                    <span class="lang-zh hidden">状态</span>
+                                </th>
+                                <th class="text-left py-2 text-sm font-medium text-gray-400">
+                                    <span class="lang-en">Actions</span>
+                                    <span class="lang-zh hidden">操作</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Active Stake 1 -->
+                            <tr class="border-b border-gray-800">
+                                <td class="py-3">
+                                    <div class="flex items-center">
+                                        <div class="h-6 w-6 rounded-full bg-token/20 flex items-center justify-center mr-2">
+                                            <i class="fa fa-calendar-check-o text-token text-xs"></i>
+                                        </div>
+                                        <span class="text-sm">7-Day Staking</span>
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm">100 USDT</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm text-gray-400">2 days ago</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm text-primary">5 days</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm text-token">200 SOLEC</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-xs bg-success/20 text-success px-1.5 py-0.5 rounded">
+                                        <span class="lang-en">Active</span>
+                                        <span class="lang-zh hidden">活跃</span>
+                                    </span>
+                                </td>
+                                <td class="py-3">
+                                    <button class="text-xs text-gray-400 hover:text-primary transition-colors">
+                                        <span class="lang-en">Details</span>
+                                        <span class="lang-zh hidden">详情</span>
+                                    </button>
+                                </td>
+                            </tr>
+                            
+                            <!-- Active Stake 2 -->
+                            <tr>
+                                <td class="py-3">
+                                    <div class="flex items-center">
+                                        <div class="h-6 w-6 rounded-full bg-warning/20 flex items-center justify-center mr-2">
+                                            <i class="fa fa-calendar text-warning text-xs"></i>
+                                        </div>
+                                        <span class="text-sm">3-Day Staking</span>
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm">100 USDT</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm text-gray-400">1 day ago</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm text-primary">2 days</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-sm text-token">10 SOLEC</span>
+                                </td>
+                                <td class="py-3">
+                                    <span class="text-xs bg-success/20 text-success px-1.5 py-0.5 rounded">
+                                        <span class="lang-en">Active</span>
+                                        <span class="lang-zh hidden">活跃</span>
+                                    </span>
+                                </td>
+                                <td class="py-3">
+                                    <button class="text-xs text-gray-400 hover:text-primary transition-colors">
+                                        <span class="lang-en">Details</span>
+                                        <span class="lang-zh hidden">详情</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Referral Section -->
+        <section id="referral" class="mb-10">
+            <h2 class="text-2xl font-bold mb-6">
+                <span class="lang-en">Refer & Earn</span>
+                <span class="lang-zh hidden">推荐返佣</span>
+            </h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 bg-secondary rounded-xl p-5 gradient-border">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="font-semibold text-lg">
+                                <span class="lang-en">Your Referral Program</span>
+                                <span class="lang-zh hidden">你的推荐计划</span>
+                            </h3>
+                            <p class="text-sm text-gray-400 mt-1">
+                                <span class="lang-en">Invite friends and earn 2% of their trading volume</span>
+                                <span class="lang-zh hidden">邀请好友，赚取其交易额的2%</span>
+                            </p>
+                        </div>
+                        
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-dark/50 px-4 py-2 rounded-lg border border-gray-700">
+                                <p class="text-xs text-gray-400">
+                                    <span class="lang-en">Total Referrals</span>
+                                    <span class="lang-zh hidden">总推荐人数</span>
+                                </p>
+                                <p class="font-semibold">24</p>
+                            </div>
+                            <div class="bg-dark/50 px-4 py-2 rounded-lg border border-gray-700">
+                                <p class="text-xs text-gray-400">
+                                    <span class="lang-en">Total Earnings</span>
+                                    <span class="lang-zh hidden">总收益</span>
+                                </p>
+                                <p class="font-semibold text-primary">$1,256.32</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Referral Link -->
+                    <div class="bg-dark/50 rounded-lg p-4 border border-gray-700 mb-6">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <div class="flex-grow relative">
+                                <input type="text" value="https://solanatrade.com/ref/8f7e6d5c4b3a2" 
+                                    class="w-full bg-dark border border-gray-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary" readonly>
+                            </div>
+                            <button id="copy-referral" class="px-4 py-2.5 bg-primary text-dark font-medium rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
+                                <i class="fa fa-copy mr-1"></i>
+                                <span class="lang-en">Copy Link</span>
+                                <span class="lang-zh hidden">复制链接</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Referral Commission Structure -->
+                    <div>
+                        <h4 class="font-medium mb-3">
+                            <span class="lang-en">Commission Structure</span>
+                            <span class="lang-zh hidden">佣金结构</span>
+                        </h4>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center bg-dark/30 p-3 rounded-lg">
+                                <div>
+                                    <p class="font-medium">
+                                        <span class="lang-en">Direct Referrals</span>
+                                        <span class="lang-zh hidden">直接推荐</span>
+                                    </p>
+                                    <p class="text-sm text-gray-400">
+                                        <span class="lang-en">Users you directly invite</span>
+                                        <span class="lang-zh hidden">你直接邀请的用户</span>
+                                    </p>
+                                </div>
+                                <span class="text-primary font-bold">2% of trading volume</span>
+                            </div>
+                            <div class="p-4 bg-primary/10 border border-primary/20 rounded-lg text-sm">
+                                <i class="fa fa-info-circle text-primary mr-2"></i>
+                                <span class="lang-en">Commissions are automatically distributed to your Phantom wallet daily</span>
+                                <span class="lang-zh hidden">佣金每天自动发放到你的Phantom钱包</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Referral Stats -->
+                <div class="bg-secondary rounded-xl p-5 gradient-border">
+                    <h3 class="font-semibold text-lg mb-4">
+                        <span class="lang-en">Referral Earnings</span>
+                        <span class="lang-zh hidden">推荐收益</span>
+                    </h3>
+                    
+                    <!-- Earnings Chart -->
+                    <div class="h-[180px] mb-5">
+                        <canvas id="referral-chart"></canvas>
+                    </div>
+                    
+                    <!-- Recent Referrals -->
+                    <h4 class="font-medium text-sm mb-3">
+                        <span class="lang-en">Recent Referrals</span>
+                        <span class="lang-zh hidden">最近推荐</span>
+                    </h4>
+                    
+                    <div class="space-y-3 max-h-[200px] overflow-y-auto pr-2">
+                        <div class="bg-dark/50 rounded-lg p-3 border border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center">
+                                    <div class="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center mr-2">
+                                        <span class="text-xs">JD</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm">johndoe***@mail.com</p>
+                                        <p class="text-xs text-gray-400">
+                                            <span class="lang-en">Joined 3d ago</span>
+                                            <span class="lang-zh hidden">3天前加入</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <span class="text-success text-sm">+$45.20</span>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-dark/50 rounded-lg p-3 border border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center">
+                                    <div class="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center mr-2">
+                                        <span class="text-xs">AS</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm">an***mith@mail.com</p>
+                                        <p class="text-xs text-gray-400">
+                                            <span class="lang-en">Joined 1w ago</span>
+                                            <span class="lang-zh hidden">1周前加入</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <span class="text-success text-sm">+$12.80</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-secondary border-t border-gray-800 py-8">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                            <i class="fa fa-link text-dark text-sm font-bold"></i>
+                        </div>
+                        <h3 class="text-lg font-bold tracking-tight">
+                            <span class="text-primary">Solana</span><span class="lang-en">Trade</span><span class="lang-zh hidden">交易</span>
+                        </h3>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-4">
+                        <span class="lang-en">The premier platform for Solana event contract trading with staking and referral programs.</span>
+                        <span class="lang-zh hidden">Solana事件合约交易的顶级平台，提供质押和推荐计划。</span>
+                    </p>
+                    <div class="flex space-x-4">
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors"><i class="fa fa-twitter"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors"><i class="fa fa-telegram"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors"><i class="fa fa-discord"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-primary transition-colors"><i class="fa fa-medium"></i></a>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">
+                        <span class="lang-en">Platform</span>
+                        <span class="lang-zh hidden">平台</span>
+                    </h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="#markets" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Markets</span>
+                            <span class="lang-zh hidden">市场</span>
+                        </a></li>
+                        <li><a href="#trading" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Event Contracts</span>
+                            <span class="lang-zh hidden">事件合约</span>
+                        </a></li>
+                        <li><a href="#staking" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Staking</span>
+                            <span class="lang-zh hidden">质押</span>
+                        </a></li>
+                        <li><a href="#referral" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Referral Program</span>
+                            <span class="lang-zh hidden">推荐计划</span>
+                        </a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">
+                        <span class="lang-en">Resources</span>
+                        <span class="lang-zh hidden">资源</span>
+                    </h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Help Center</span>
+                            <span class="lang-zh hidden">帮助中心</span>
+                        </a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Trading Guide</span>
+                            <span class="lang-zh hidden">交易指南</span>
+                        </a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">API Documentation</span>
+                            <span class="lang-zh hidden">API文档</span>
+                        </a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Status</span>
+                            <span class="lang-zh hidden">系统状态</span>
+                        </a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">
+                        <span class="lang-en">Legal</span>
+                        <span class="lang-zh hidden">法律</span>
+                    </h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Terms of Service</span>
+                            <span class="lang-zh hidden">服务条款</span>
+                        </a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Privacy Policy</span>
+                            <span class="lang-zh hidden">隐私政策</span>
+                        </a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">Risk Disclosure</span>
+                            <span class="lang-zh hidden">风险披露</span>
+                        </a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-primary transition-colors">
+                            <span class="lang-en">KYC Policy</span>
+                            <span class="lang-zh hidden">KYC政策</span>
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-800 mt-8 pt-6 flex flex-col md:flex-row justify-between items-center">
+                <p class="text-sm text-gray-500">
+                    <span class="lang-en">© 2023 SolanaTrade. All rights reserved.</span>
+                    <span class="lang-zh hidden">© 2023 SolanaTrade. 保留所有权利。</span>
+                </p>
+                <p class="text-sm text-gray-500 mt-2 md:mt-0">
+                    <span class="lang-en">Trading crypto assets involves significant risk.</span>
+                    <span class="lang-zh hidden">加密资产交易存在重大风险。</span>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Mobile Menu Toggle
+        document.getElementById('mobile-menu-button').addEventListener('click', function() {
+            const mobileMenu = document.getElementById('mobile-menu');
+            mobileMenu.classList.toggle('hidden');
+        });
+        
+        // Language Toggle with fix for order buttons
+        document.getElementById('language-toggle').addEventListener('click', function() {
+            const enElements = document.querySelectorAll('.lang-en');
+            const zhElements = document.querySelectorAll('.lang-zh');
+            const isChinese = !zhElements[0].classList.contains('hidden');
+            
+            enElements.forEach(el => el.classList.toggle('hidden'));
+            zhElements.forEach(el => el.classList.toggle('hidden'));
+            
+            // Update place order button text based on current selection
+            updatePlaceOrderButtonText();
+        });
+        
+        // Timeframe Buttons
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.timeframe-btn').forEach(b => {
+                    b.classList.remove('active', 'bg-primary/10', 'text-primary');
+                    b.classList.add('text-gray-400');
+                });
+                this.classList.add('active', 'bg-primary/10', 'text-primary');
+                this.classList.remove('text-gray-400');
+                // Here you would typically update the chart data based on selected timeframe
+            });
+        });
+        
+        // Order Type Buttons with language fix
+        document.querySelectorAll('.order-type-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.order-type-btn').forEach(b => {
+                    b.classList.remove('text-primary', 'border-b-2', 'border-primary');
+                    b.classList.add('text-gray-400');
+                });
+                this.classList.add('text-primary', 'border-b-2', 'border-primary');
+                this.classList.remove('text-gray-400');
+                
+                // Update place order button text
+                updatePlaceOrderButtonText();
+            });
+        });
+        
+        // Update place order button text based on selected type and current language
+        function updatePlaceOrderButtonText() {
+            const placeOrderBtn = document.getElementById('place-order');
+            const activeBtn = document.querySelector('.order-type-btn.text-primary');
+            const isUp = activeBtn.dataset.type === 'up';
+            const isChinese = !document.querySelector('.lang-zh').classList.contains('hidden');
+            
+            if (isUp) {
+                placeOrderBtn.innerHTML = isChinese ? 
+                    '<span class="lang-en hidden">Place Up Order</span><span class="lang-zh">提交上涨订单</span>' :
+                    '<span class="lang-en">Place Up Order</span><span class="lang-zh hidden">提交上涨订单</span>';
+            } else {
+                placeOrderBtn.innerHTML = isChinese ?
+                    '<span class="lang-en hidden">Place Down Order</span><span class="lang-zh">提交下跌订单</span>' :
+                    '<span class="lang-en">Place Down Order</span><span class="lang-zh hidden">提交下跌订单</span>';
+            }
+        }
+        
+        // Amount Buttons
+        document.querySelectorAll('.amount-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const amountInput = document.querySelector('input[type="number"]');
+                const balance = 12540.89; // Total balance from UI
+                let percentage = parseFloat(this.textContent);
+                let amount = (balance * (percentage / 100)).toFixed(0);
+                
+                // Ensure amount is at least the minimum (10)
+                if (amount < 10) amount = 10;
+                
+                amountInput.value = amount;
+            });
+        });
+        
+        // Copy Referral Link
+        document.getElementById('copy-referral').addEventListener('click', function() {
+            const referralInput = document.querySelector('input[value^="https://solanatrade.com/ref/"]');
+            referralInput.select();
+            document.execCommand('copy');
+            
+            // Show feedback
+            const originalText = this.innerHTML;
+            this.innerHTML = '<i class="fa fa-check mr-1"></i><span class="lang-en">Copied!</span><span class="lang-zh hidden">已复制!</span>';
+            setTimeout(() => {
+                this.innerHTML = originalText;
+            }, 2000);
+        });
+        
+        // Initialize Charts
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update last updated time
+            updateLastUpdated();
+            setInterval(updateLastUpdated, 60000); // Update every minute
+            
+            // Initialize crypto price charts
+            initCryptoCharts();
+            
+            // Initialize trading chart
+            initTradingChart();
+            
+            // Initialize referral chart
+            initReferralChart();
+            
+            // Start countdown timer
+            startCountdown();
+            
+            // Wallet connection simulation
+            setupWalletConnection();
+        });
+        
+        // Update last updated time
+        function updateLastUpdated() {
+            const now = new Date();
+            document.getElementById('last-updated').textContent = now.toLocaleTimeString();
+        }
+        
+        // Initialize small crypto charts
+        function initCryptoCharts() {
+            document.querySelectorAll('.crypto-chart').forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                const crypto = canvas.dataset.crypto;
+                
+                // Generate random data
+                const data = Array.from({length: 20}, () => Math.random() * 100);
+                
+                // Set line color based on crypto
+                let borderColor = '#00FFA3'; // Default to primary
+                if (crypto === 'btc') borderColor = '#F7931A';
+                if (crypto === 'eth') borderColor = '#627EEA';
+                if (crypto === 'bnb') borderColor = '#F3BA2F';
+                if (crypto === 'sol') borderColor = '#00FFA3';
+                if (crypto === 'ada') borderColor = '#34A0A4'; // ADA的颜色
+                
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: Array.from({length: 20}, (_, i) => i),
+                        datasets: [{
+                            data: data,
+                            borderColor: borderColor,
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.4,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { display: false }, y: { display: false } },
+                        elements: { line: { tension: 0.4 } },
+                        animation: { duration: 1000 }
+                    }
+                });
+            });
+        }
+        
+        // Initialize main trading chart
+        function initTradingChart() {
+            const ctx = document.getElementById('trading-chart').getContext('2d');
+            
+            // Generate time labels (last 30 5-minute intervals)
+            const labels = Array.from({length: 30}, (_, i) => {
+                const time = new Date();
+                time.setMinutes(time.getMinutes() - (30 - i) * 5);
+                return time.getHours() + ':' + (time.getMinutes() < 10 ? '0' + time.getMinutes() : time.getMinutes());
+            });
+            
+            // Generate price data
+            let priceData = [];
+            let price = 123.45; // Starting price
+            for (let i = 0; i < 30; i++) {
+                // Random price movement
+                price += (Math.random() - 0.48) * 2;
+                priceData.push(price.toFixed(2));
+            }
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: priceData,
+                        borderColor: '#00FFA3',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.2,
+                        fill: true,
+                        backgroundColor: (context) => {
+                            const ctx = context.chart.ctx;
+                            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+                            gradient.addColorStop(0, 'rgba(0, 255, 163, 0.2)');
+                            gradient.addColorStop(1, 'rgba(0, 255, 163, 0)');
+                            return gradient;
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            borderColor: 'rgba(0, 255, 163, 0.3)',
+                            borderWidth: 1,
+                            titleColor: '#F8FAFC',
+                            bodyColor: '#F8FAFC',
+                            displayColors: false
+                        }
+                    },
+                    scales: { 
+                        x: { 
+                            display: true,
+                            grid: { display: false, drawBorder: false },
+                            ticks: { color: '#94A3B8' }
+                        }, 
+                        y: { 
+                            display: true,
+                            position: 'right',
+                            grid: { color: 'rgba(148, 163, 184, 0.1)', drawBorder: false },
+                            ticks: { color: '#94A3B8' }
+                        } 
+                    },
+                    elements: { line: { tension: 0.2 } },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    },
+                    animation: { duration: 1500 }
+                }
+            });
+        }
+        
+        // Initialize referral earnings chart
+        function initReferralChart() {
+            const ctx = document.getElementById('referral-chart').getContext('2d');
+            
+            // Weekly earnings data
+            const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            const data = [45, 62, 38, 75, 52, 90, 65];
+            
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: '#7C3AED',
+                        borderRadius: 4,
+                        barThickness: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        x: { display: true, grid: { display: false }, ticks: { color: '#94A3B8', font: { size: 10 } } },
+                        y: { display: false } 
+                    },
+                    animation: { duration: 1000 }
+                }
+            });
+        }
+        
+        // Countdown timer simulation
+        function startCountdown() {
+            const timerEl = document.getElementById('countdown-timer');
+            let minutes = 5;
+            let seconds = 0;
+            
+            setInterval(() => {
+                if (seconds === 0) {
+                    if (minutes === 0) {
+                        // Reset timer when it reaches 0
+                        minutes = 5;
+                        seconds = 0;
+                    } else {
+                        minutes--;
+                        seconds = 59;
+                    }
+                } else {
+                    seconds--;
+                }
+                
+                // Format display
+                timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+        
+        // Wallet connection simulation
+        function setupWalletConnection() {
+            const connectButtons = [
+                document.getElementById('connect-wallet'),
+                document.getElementById('mobile-connect-wallet')
+            ];
+            
+            connectButtons.forEach(btn => {
+                if (btn) {
+                    btn.addEventListener('click', function() {
+                        // Simulate wallet connection
+                        this.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i><span class="lang-en">Connecting...</span><span class="lang-zh hidden">连接中...</span>';
+                        
+                        setTimeout(() => {
+                            // Simulate successful connection
+                            this.innerHTML = '0x71C...f8D2';
+                            this.classList.add('font-mono');
+                            
+                            // Show a notification
+                            showNotification('Wallet connected successfully', 'success');
+                        }, 1500);
+                    });
+                }
+            });
+        }
+        
+        // Notification system
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 px-4 py-3 rounded-lg z-50 flex items-center ${
+                type === 'success' ? 'bg-success/20 text-success border border-success/30' :
+                type === 'error' ? 'bg-danger/20 text-danger border border-danger/30' :
+                'bg-primary/20 text-primary border border-primary/30'
+            }`;
+            
+            notification.innerHTML = `
+                <i class="fa fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} mr-2"></i>
+                <span>${message}</span>
+            `;
+            
+            // Add to document
+            document.body.appendChild(notification);
+            
+            // Animate in
+            setTimeout(() => {
+                notification.style.transition = 'opacity 0.3s, transform 0.3s';
+                notification.style.opacity = '1';
+                notification.style.transform = 'translateY(0)';
+            }, 10);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateY(-10px)';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
+    
