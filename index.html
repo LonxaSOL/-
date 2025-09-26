@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><!-- 在<head>中添加 -->
+<script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solana Event Contract Trading Platform</title>
@@ -1483,7 +1484,26 @@
                 }, 300);
             }, 3000);
         }
-    </script>
+    </script>// 定期更新价格
+setInterval(() => {
+  fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,cardano&vs_currencies=usd')
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById('btc-price').textContent = `$${data.bitcoin.usd.toLocaleString()}`;
+      document.getElementById('sol-price').textContent = `$${data.solana.usd.toFixed(2)}`;
+      // 更新其他价格...
+    });
+}, 30000); // 每30秒更新一次// 放在</body>前的<script>标签内
+if (window.solana && window.solana.isPhantom) {
+  const connectWallet = () => {
+    window.solana.connect().then(account => {
+      console.log("Connected wallet:", account.publicKey.toString());
+    });
+  };
+  // 绑定到现有连接按钮
+  document.getElementById('connect-wallet').addEventListener('click', connectWallet);
+  document.getElementById('mobile-connect-wallet').addEventListener('click', connectWallet);
+}
 </body>
 </html>
     
